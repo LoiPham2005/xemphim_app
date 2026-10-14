@@ -57,6 +57,7 @@ export async function Header() {
               MỘT lối vào khu quản trị, trỏ tới trang ĐẦU TIÊN người này thật sự vào được — sidebar
               trong `(admin)/layout.tsx` lo phần còn lại.
             */}
+            {user && <NavLink href="/history">Lịch sử</NavLink>}
             {adminEntry && <NavLink href={adminEntry}>Quản trị</NavLink>}
           </nav>
         </div>
@@ -115,7 +116,7 @@ function NavLink({
   href,
   children,
 }: {
-  href: "/" | AdminRoute | { pathname: "/"; query: Record<string, string> };
+  href: "/" | "/history" | AdminRoute | { pathname: "/"; query: Record<string, string> };
   children: React.ReactNode;
 }) {
   return (

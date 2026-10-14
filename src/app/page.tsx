@@ -73,15 +73,16 @@ export default async function HomePage({
     );
   }
 
-  const first = { page: 1, limit: ROW_COUNT };
+  // Hàng phim dùng `latest()` (không transaction); chỉ lưới phân trang mới cần `list()`.
+  const row = { limit: ROW_COUNT };
   const [latest, series, single, theatrical, all] = await Promise.all([
-    movieService.list(first, viewer),
-    movieService.list({ ...first, type: "SERIES" }, viewer),
-    movieService.list({ ...first, type: "SINGLE" }, viewer),
-    movieService.list({ ...first, type: "THEATRICAL" }, viewer),
+    movieService.latest(row, viewer),
+    movieService.latest({ ...row, type: "SERIES" }, viewer),
+    movieService.latest({ ...row, type: "SINGLE" }, viewer),
+    movieService.latest({ ...row, type: "THEATRICAL" }, viewer),
     movieService.list(query, viewer),
   ]);
-  const featured = latest.items[0];
+  const featured = latest[0];
 
   if (!featured) {
     return (
@@ -109,10 +110,10 @@ export default async function HomePage({
 
       <div className="mx-auto flex max-w-7xl flex-col gap-12 px-4 py-10 sm:px-6 lg:px-8">
         <FilterBar genres={genres} filters={filters} />
-        <MovieRow title="Mới cập nhật" movies={latest.items} />
-        <MovieRow title="Phim bộ" movies={series.items} />
-        <MovieRow title="Phim lẻ" movies={single.items} />
-        <MovieRow title="Chiếu rạp" movies={theatrical.items} />
+        <MovieRow title="Mới cập nhật" movies={latest} />
+        <MovieRow title="Phim bộ" movies={series} />
+        <MovieRow title="Phim lẻ" movies={single} />
+        <MovieRow title="Chiếu rạp" movies={theatrical} />
 
         <section>
           <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-content">

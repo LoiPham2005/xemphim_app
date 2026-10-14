@@ -80,3 +80,25 @@ export const listMoviesQuerySchema = listMoviesSchema.extend({
 export const watchMovieQuerySchema = z.object({
   ep: emptyToUndefined(z.coerce.number().int().positive().optional()),
 });
+
+/**
+ * Trình phát báo vị trí đang xem. Gửi định kỳ khi đang phát, khi tạm dừng và khi rời trang — chỉ
+ * ghi đè đúng một dòng cho mỗi (người, phim), nên gửi dày cũng không phình bảng.
+ */
+export const saveWatchProgressSchema = z.object({
+  episodeId: z.string().min(1),
+  positionSeconds: z
+    .number()
+    .int()
+    .min(0)
+    .max(24 * 3600),
+  durationSeconds: z
+    .number()
+    .int()
+    .positive()
+    .max(24 * 3600),
+});
+export type SaveWatchProgressInput = z.infer<typeof saveWatchProgressSchema>;
+
+export const listWatchHistorySchema = paginationSchema;
+export type ListWatchHistoryInput = z.infer<typeof listWatchHistorySchema>;

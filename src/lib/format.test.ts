@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatCurrency, formatDate, formatDateTime, formatPhoneNumber, slugify } from "./format";
+import {
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  formatDuration,
+  formatPhoneNumber,
+  slugify,
+} from "./format";
 
 /**
  * Vì sao file tiện ích này cần test dù nó rất đơn giản.
@@ -101,5 +108,22 @@ describe("slugify", () => {
 
   it("loại ký tự đặc biệt nhưng giữ chữ số", () => {
     expect(slugify("iPhone 15 Pro Max (2024)!")).toBe("iphone-15-pro-max-2024");
+  });
+});
+
+describe("formatDuration", () => {
+  it("dưới 1 tiếng: phút:giây", () => {
+    expect(formatDuration(0)).toBe("0:00");
+    expect(formatDuration(40)).toBe("0:40");
+    expect(formatDuration(605)).toBe("10:05");
+  });
+
+  it("từ 1 tiếng: giờ:phút:giây, có số 0 đệm", () => {
+    expect(formatDuration(3725)).toBe("1:02:05");
+  });
+
+  it("làm tròn xuống, số âm thành 0", () => {
+    expect(formatDuration(59.9)).toBe("0:59");
+    expect(formatDuration(-5)).toBe("0:00");
   });
 });

@@ -183,6 +183,7 @@ model User {
   devices            UserDevice[]
   notifications      NotificationRecipient[]
   uploadedFiles      File[]
+  watchHistory       WatchHistory[]
 
   // Index thường để tra cứu; tính duy nhất do partial unique index lo.
   @@index([email])
@@ -538,17 +539,18 @@ enum MovieType {
 /// Một bộ phim. Video nằm ở `Episode` (phim lẻ = 1 tập), poster là dòng trong `files` (khoá ngoại,
 /// KHÔNG lưu URL) — URL xem do `movieService` ký lúc trả về, nên bucket để riêng tư được.
 model Movie {
-  id           String       @id @default(cuid())
+  id           String         @id @default(cuid())
   title        String
   description  String?
-  releaseYear  Int?         @map("release_year")
-  type         MovieType    @default(SINGLE)
+  releaseYear  Int?           @map("release_year")
+  type         MovieType      @default(SINGLE)
   /// `false` = chỉ người có `movie:manage` thấy. Tải lên xong kiểm tra rồi mới bật.
-  published    Boolean      @default(false)
-  posterFileId String?      @unique @map("poster_file_id")
-  poster       File?        @relation("MoviePoster", fields: [posterFileId], references: [id], onDelete: SetNull)
+  published    Boolean        @default(false)
+  posterFileId String?        @unique @map("poster_file_id")
+  poster       File?          @relation("MoviePoster", fields: [posterFileId], references: [id], onDelete: SetNull)
   episodes     Episode[]
   genres       MovieGenre[]
+  watchHistory WatchHistory[]
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -569,6 +571,8 @@ model Episode {
   videoFileId String   @unique @map("video_file_id")
   video       File     @relation("EpisodeVideo", fields: [videoFileId], references: [id], onDelete: Restrict)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  watchHistory WatchHistory[]
 
   @@unique([movieId, number])
   @@map("episodes")
@@ -595,4 +599,27 @@ model MovieGenre {
   @@id([movieId, genreId])
   @@index([genreId])
   @@map("movie_genres")
+}
+
+/// Lịch sử xem: MỘT dòng cho mỗi (người, phim) — tập đang xem dở và vị trí trong tập đó. Xem tập
+/// khác thì dòng được ghi đè, nên "Xem tiếp" luôn trỏ về đúng chỗ dừng gần nhất của phim.
+model WatchHistory {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movieId         String   @map("movie_id")
+  movie           Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  episodeId       String   @map("episode_id")
+  episode         Episode  @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  /// Giây đang xem tới, làm tròn xuống.
+  positionSeconds Int      @map("position_seconds")
+  /// Thời lượng tập do trình phát báo — dùng tính % đã xem và "đã xem xong".
+  durationSeconds Int      @map("duration_seconds")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([userId, movieId])
+  @@index([userId, updatedAt])
+  @@index([episodeId])
+  @@map("watch_history")
 }

@@ -35,6 +35,7 @@ import {
   addEpisodeSchema,
   createGenreSchema,
   createMovieSchema,
+  saveWatchProgressSchema,
   setMoviePublishedSchema,
   updateMovieSchema,
 } from "@/schemas/movie.schema";
@@ -572,9 +573,46 @@ const moviesListResponse = envelope(
   z.object({ items: z.array(movieSchema), meta: paginationMetaSchema }),
 );
 const movieResponse = envelope("MovieResponse", z.object({ movie: movieSchema }));
+const watchProgressSchema = named(
+  "WatchProgress",
+  z.object({
+    episode: episodeSchema,
+    positionSeconds: z.number().int(),
+    durationSeconds: z.number().int(),
+    /** Còn ≤ 30 giây hoặc đã xem ≥ 95%. */
+    finished: z.boolean(),
+    nextEpisodeNumber: z.number().int().nullable(),
+    updatedAt: z.iso.datetime(),
+  }),
+);
+const watchHistoryItemSchema = named(
+  "WatchHistoryItem",
+  watchProgressSchema.extend({ movie: movieSchema }),
+);
 const watchableMovieResponse = envelope(
   "WatchableMovieResponse",
-  z.object({ movie: watchableMovieSchema }),
+  z.object({
+    movie: watchableMovieSchema,
+    /** Tiến độ đã lưu của người gọi với phim này, `null` nếu chưa xem. */
+    progress: watchProgressSchema.nullable(),
+    /** Giây nên tua tới khi mở — khác 0 chỉ khi tập đang phát là tập đang xem dở. */
+    startAt: z.number().int(),
+  }),
+);
+const watchHistoryListResponse = envelope(
+  "WatchHistoryListResponse",
+  z.object({ items: z.array(watchHistoryItemSchema), meta: paginationMetaSchema }),
+);
+const savedResponse = envelope("SavedResponse", z.object({ saved: z.literal(true) }));
+const deletedCountResponse = envelope(
+  "DeletedCountResponse",
+  z.object({ deleted: z.number().int() }),
+);
+const movieIdResponse = envelope("MovieIdResponse", z.object({ movieId: z.string() }));
+const saveWatchProgressRequest = named(
+  "SaveWatchProgressRequest",
+  saveWatchProgressSchema,
+  "input",
 );
 const managedMovieResponse = envelope(
   "ManagedMovieResponse",
@@ -1230,10 +1268,12 @@ const paths = {
       tags: ["Movies"],
       security: SECURED,
       summary:
-        "Chi tiết phim + URL phát của một tập (movie:watch). URL ký sẵn có hạn — mở lại thì gọi lại.",
+        "Chi tiết phim + URL phát của một tập (movie:watch). Bỏ trống `ep` = tập đang xem dở theo " +
+        "lịch sử (chưa xem thì tập đầu); `startAt` = giây nên tua tới. URL ký sẵn có hạn — mở lại " +
+        "thì gọi lại.",
       parameters: [
         pathParam("id"),
-        queryParam("ep", { type: "integer", minimum: 1 }, "Số tập, bỏ trống = tập đầu"),
+        queryParam("ep", { type: "integer", minimum: 1 }, "Số tập, bỏ trống = tập đang xem dở"),
       ],
       responses: { ...okResponse(watchableMovieResponse), ...errorResponses(401, 403, 404, 422) },
     },
@@ -1323,6 +1363,42 @@ const paths = {
       summary: "Xoá thể loại (movie:manage) — chỉ gỡ nhãn khỏi phim, không xoá phim",
       parameters: [pathParam("id")],
       responses: { ...okResponse(idResponse), ...errorResponses(401, 403, 404) },
+    },
+  },
+  "/watch-history": {
+    get: {
+      tags: ["Watch history"],
+      security: SECURED,
+      summary: "Lịch sử xem của CHÍNH người gọi (movie:watch), xem gần nhất trước",
+      parameters: [
+        queryParam("page", { type: "integer", minimum: 1, default: 1 }),
+        queryParam("limit", { type: "integer", minimum: 1, maximum: 100, default: 20 }),
+      ],
+      responses: { ...okResponse(watchHistoryListResponse), ...errorResponses(401, 403, 422) },
+    },
+    post: {
+      tags: ["Watch history"],
+      security: SECURED,
+      summary:
+        "Lưu vị trí đang xem (movie:watch). Gọi định kỳ khi phát (~15 giây), khi tạm dừng và khi " +
+        "thoát. Mỗi phim một dòng — tập khác ghi đè tập trước.",
+      requestBody: jsonBody(saveWatchProgressRequest),
+      responses: { ...okResponse(savedResponse), ...errorResponses(401, 403, 404, 422) },
+    },
+    delete: {
+      tags: ["Watch history"],
+      security: SECURED,
+      summary: "Xoá TOÀN BỘ lịch sử xem của người gọi",
+      responses: { ...okResponse(deletedCountResponse), ...errorResponses(401, 403) },
+    },
+  },
+  "/watch-history/{movieId}": {
+    delete: {
+      tags: ["Watch history"],
+      security: SECURED,
+      summary: "Bỏ một phim khỏi lịch sử của người gọi",
+      parameters: [pathParam("movieId")],
+      responses: { ...okResponse(movieIdResponse), ...errorResponses(401, 403) },
     },
   },
   "/users/{id}/roles": {

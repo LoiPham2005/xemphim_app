@@ -5,14 +5,16 @@ import { updateMovieSchema, watchMovieQuerySchema } from "@/schemas/movie.schema
 import { auditService } from "@/services/audit.service";
 import { movieService } from "@/services/movie.service";
 import { permissionService } from "@/services/permission.service";
+import { resumeTarget, watchHistoryService } from "@/services/watch-history.service";
 
 export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 /**
- * Chi tiết phim + URL phát của một tập (`?ep=`, bỏ trống = tập đầu). URL là URL ký sẵn, hết hạn sau
- * vài giờ — client đừng lưu lại, mở lại thì gọi lại endpoint này. Phim ẩn chỉ `movie:manage` thấy.
+ * Chi tiết phim + URL phát của một tập. `?ep=` bỏ trống = tập đang xem dở (theo lịch sử), chưa xem
+ * thì tập đầu. `startAt` = giây nên tua tới. URL là URL ký sẵn, hết hạn sau vài giờ — client đừng
+ * lưu lại, mở lại thì gọi lại endpoint này. Phim ẩn chỉ `movie:manage` thấy.
  */
 export async function GET(request: Request, { params }: RouteContext) {
   try {
@@ -26,8 +28,16 @@ export async function GET(request: Request, { params }: RouteContext) {
     }
 
     const includeUnpublished = await permissionService.can(session.sub, "movie:manage");
-    const movie = await movieService.getForWatch(id, parsed.data.ep, { includeUnpublished });
-    return apiOk({ movie });
+    const progress = await watchHistoryService.getProgress(session.sub, id);
+    const resume = resumeTarget(progress);
+    // Không chỉ định `ep` -> mở đúng tập đang xem dở (hoặc tập kế tiếp nếu đã xem xong).
+    const episodeNumber = parsed.data.ep ?? resume?.episodeNumber;
+
+    const movie = await movieService.getForWatch(id, episodeNumber, { includeUnpublished });
+    // Chỉ trả vị trí tua khi tập đang phát CHÍNH LÀ tập đang dở — tập khác thì phát từ đầu.
+    const startAt =
+      resume && resume.episodeNumber === movie.current.number ? resume.positionSeconds : 0;
+    return apiOk({ movie, progress, startAt });
   } catch (error) {
     return handleApiError(error, { route: "GET /api/v1/movies/[id]", request });
   }

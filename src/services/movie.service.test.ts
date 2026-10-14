@@ -151,6 +151,28 @@ describe("MovieService.list", () => {
   });
 });
 
+describe("MovieService.latest", () => {
+  it("chỉ một findMany, KHÔNG mở transaction (tránh cạn pool khi trang gọi song song)", async () => {
+    const db = createDb();
+    const items = await service(db).latest(
+      { type: "SERIES", limit: 12 },
+      { includeUnpublished: false },
+    );
+
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.movie.count).not.toHaveBeenCalled();
+    const args = db.movie.findMany.mock.calls[0]?.[0] as {
+      where: object;
+      take: number;
+      orderBy: object;
+    };
+    expect(args.where).toEqual({ published: true, type: "SERIES" });
+    expect(args.take).toBe(12);
+    expect(args.orderBy).toEqual({ updatedAt: "desc" });
+    expect(items[0]?.posterUrl).toBe("https://signed.test/posters/1.png");
+  });
+});
+
 describe("MovieService.getForWatch", () => {
   it("không chỉ định tập -> phát tập đầu, kèm danh sách tập", async () => {
     const movie = await service().getForWatch("m1", undefined, { includeUnpublished: false });

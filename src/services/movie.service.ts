@@ -62,13 +62,13 @@ export type ManagedMovie = PublicMovie & {
 /** `includeUnpublished` = người xem có `movie:manage` — nơi gọi kiểm quyền rồi mới bật. */
 export type MovieViewer = { includeUnpublished: boolean };
 
-const LIST_INCLUDE = {
+export const LIST_INCLUDE = {
   poster: true,
   genres: { include: { genre: true }, orderBy: { genre: { name: "asc" } } },
   _count: { select: { episodes: true } },
 } satisfies Prisma.MovieInclude;
 
-type MovieListRow = Movie & {
+export type MovieListRow = Movie & {
   poster: FileRow | null;
   genres: (MovieGenre & { genre: Genre })[];
   _count: { episodes: number };
@@ -116,6 +116,28 @@ export class MovieService {
       items: await Promise.all(rows.map((row) => toPublicMovie(row))),
       meta: buildPaginationMeta(total, input),
     };
+  }
+
+  /**
+   * Vài phim mới cập nhật nhất cho các HÀNG phim (trang chủ, gợi ý) — một `findMany`, KHÔNG đếm tổng
+   * và KHÔNG mở transaction. Đừng dùng `list()` cho việc này: mỗi lần `list()` giữ một kết nối suốt
+   * transaction, trang chủ gọi song song 5 lần là cạn pool và Prisma báo P2028 ("Unable to start a
+   * transaction in the given time") — đã xảy ra trên bản build production.
+   */
+  async latest(
+    options: { type?: MovieType; limit: number },
+    viewer: MovieViewer,
+  ): Promise<PublicMovie[]> {
+    const rows = await this.db.movie.findMany({
+      where: {
+        ...(viewer.includeUnpublished ? {} : { published: true }),
+        ...(options.type ? { type: options.type } : {}),
+      },
+      include: LIST_INCLUDE,
+      orderBy: { updatedAt: "desc" },
+      take: options.limit,
+    });
+    return Promise.all(rows.map((row) => toPublicMovie(row)));
   }
 
   /**
@@ -355,7 +377,7 @@ function toEpisodeSummary(episode: Episode): EpisodeSummary {
   return { id: episode.id, number: episode.number, title: episode.title };
 }
 
-async function toPublicMovie(row: MovieListRow): Promise<PublicMovie> {
+export async function toPublicMovie(row: MovieListRow): Promise<PublicMovie> {
   return {
     id: row.id,
     title: row.title,

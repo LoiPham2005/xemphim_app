@@ -78,3 +78,16 @@ export function slugify(str: string): string {
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
+
+/**
+ * Format số giây thành thời lượng kiểu trình phát video. Không kèm giờ khi dưới 1 tiếng.
+ * @example formatDuration(40) => "0:40" · formatDuration(3725) => "1:02:05"
+ */
+export function formatDuration(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const seconds = safe % 60;
+  const minutes = Math.floor(safe / 60) % 60;
+  const hours = Math.floor(safe / 3600);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
+}

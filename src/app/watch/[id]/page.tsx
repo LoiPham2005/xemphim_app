@@ -8,7 +8,9 @@ import { cn } from "@/lib/cn";
 import { MOVIE_TYPE_LABELS } from "@/schemas/movie.schema";
 import { movieService, type WatchableMovie } from "@/services/movie.service";
 import { permissionService } from "@/services/permission.service";
+import { resumeTarget, watchHistoryService } from "@/services/watch-history.service";
 import { MoviePoster, MovieRow } from "@/components/movie/movie-card";
+import { VideoPlayer } from "@/components/movie/video-player";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = { title: "Xem phim" };
@@ -30,9 +32,13 @@ export default async function WatchPage({
   // Người quản lý xem thử được phim chưa xuất bản.
   const includeUnpublished = await permissionService.can(user.id, "movie:manage");
 
-  // `?ep=abc` hay `?ep=0` thì coi như không chọn tập — phát tập đầu, không báo lỗi cả trang.
+  // `?ep=abc` hay `?ep=0` thì coi như không chọn tập, không báo lỗi cả trang.
   const parsedEp = Number(ep);
-  const episodeNumber = Number.isInteger(parsedEp) && parsedEp > 0 ? parsedEp : undefined;
+  const requestedEp = Number.isInteger(parsedEp) && parsedEp > 0 ? parsedEp : undefined;
+
+  // Không chọn tập -> mở đúng tập đang xem dở (hoặc tập sau nếu đã xem xong); chưa xem -> tập đầu.
+  const resume = resumeTarget(await watchHistoryService.getProgress(user.id, id));
+  const episodeNumber = requestedEp ?? resume?.episodeNumber;
 
   let movie: WatchableMovie;
   try {
@@ -43,13 +49,11 @@ export default async function WatchPage({
   }
 
   // Gợi ý: phim đã xuất bản mới cập nhật, trừ phim đang xem.
-  const others = await movieService.list(
-    { page: 1, limit: SUGGESTION_COUNT + 1 },
+  const others = await movieService.latest(
+    { limit: SUGGESTION_COUNT + 1 },
     { includeUnpublished: false },
   );
-  const suggestions = others.items
-    .filter((item) => item.id !== movie.id)
-    .slice(0, SUGGESTION_COUNT);
+  const suggestions = others.filter((item) => item.id !== movie.id).slice(0, SUGGESTION_COUNT);
 
   const isSeries = movie.type === "SERIES";
   const index = movie.episodes.findIndex((item) => item.id === movie.current.id);
@@ -62,18 +66,18 @@ export default async function WatchPage({
 
   return (
     <main>
-      {/* Khung chiếu: nền đen tràn ngang, video giữa. `key` = id tập để đổi tập là dựng lại thẻ video. */}
+      {/* Khung chiếu: nền đen tràn ngang, video giữa. `key` = id tập để đổi tập là dựng lại trình phát. */}
       <section className="bg-black">
         <div className="mx-auto max-w-6xl">
-          <video
+          <VideoPlayer
             key={movie.current.id}
             src={movie.current.video.url}
-            controls
-            autoPlay
-            preload="metadata"
-            playsInline
             poster={movie.posterUrl ?? undefined}
-            className="aspect-video max-h-[80vh] w-full bg-black"
+            episodeId={movie.current.id}
+            // Chỉ tua khi tập đang mở CHÍNH LÀ tập đang dở — chọn tập khác thì phát từ đầu.
+            startAt={
+              resume && resume.episodeNumber === movie.current.number ? resume.positionSeconds : 0
+            }
           />
         </div>
       </section>
