@@ -1,0 +1,28 @@
+.git
+.github
+node_modules
+**/node_modules
+.next
+**/.next
+# `dist` chỉ khớp thư mục ở GỐC. Không có `**/dist` thì `realtime/dist` và
+# `worker/dist` build sẵn trên máy dev bị chép vào build context — vừa phình
+# context, vừa có nguy cơ một artifact cũ lọt vào image nếu bước build trong
+# Dockerfile vì lý do nào đó không chạy.
+dist
+**/dist
+coverage
+*.tsbuildinfo
+
+# Không bao giờ đưa secret vào image
+.env
+.env.*
+!.env.example
+
+*.md
+!README.md
+.vscode
+.idea
+.DS_Store
+Makefile
+docker-compose.yml
+Dockerfile

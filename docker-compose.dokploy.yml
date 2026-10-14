@@ -1,0 +1,155 @@
+# Docker Compose tối ưu cho Dokploy (hoặc Coolify) khi dùng Database ngoài (Neon / Supabase)
+
+services:
+  # Chạy migration một lần lúc deploy để apply schema vào Neon DB rồi dừng lại
+  migrate:
+    # Database do Dokploy quản lý (service riêng, khác project) nằm trên mạng `dokploy-network`.
+    # Thiếu dòng này thì tên nội bộ kiểu `xemphim-db-xxxx` không phân giải được -> P1001.
+    networks: [default, dokploy-network]
+    build:
+      context: .
+      target: migrator
+    restart: "no"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:-${DATABASE_URL}}
+
+  web:
+    # Database do Dokploy quản lý (service riêng, khác project) nằm trên mạng `dokploy-network`.
+    # Thiếu dòng này thì tên nội bộ kiểu `xemphim-db-xxxx` không phân giải được -> P1001.
+    networks: [default, dokploy-network]
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:-${DATABASE_URL}}
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      REDIS_URL: redis://redis:6379
+      QUEUE_ENABLED: ${QUEUE_ENABLED:-1}
+      REALTIME_ENABLED: ${REALTIME_ENABLED:-1}
+    # Không publish cổng ra host: Traefik của Dokploy đi vào qua mạng nội bộ
+    # (Domains → service web, port 3000). Publish 3000 sẽ đụng app khác trên server.
+    expose:
+      - "3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 25s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  realtime:
+    # Database do Dokploy quản lý (service riêng, khác project) nằm trên mạng `dokploy-network`.
+    # Thiếu dòng này thì tên nội bộ kiểu `xemphim-db-xxxx` không phân giải được -> P1001.
+    networks: [default, dokploy-network]
+    build:
+      context: .
+      target: realtime
+    restart: unless-stopped
+    deploy:
+      replicas: ${REALTIME_ENABLED:-1}
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      REALTIME_PORT: 3002
+      REDIS_URL: redis://redis:6379
+      REALTIME_CORS_ORIGIN: ${REALTIME_CORS_ORIGIN:-${NEXT_PUBLIC_APP_URL}}
+      REALTIME_ENABLED: ${REALTIME_ENABLED:-1}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+    # Như web: gắn domain riêng trong Dokploy (service realtime, port 3002).
+    expose:
+      - "3002"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  worker:
+    # Database do Dokploy quản lý (service riêng, khác project) nằm trên mạng `dokploy-network`.
+    # Thiếu dòng này thì tên nội bộ kiểu `xemphim-db-xxxx` không phân giải được -> P1001.
+    networks: [default, dokploy-network]
+    build:
+      context: .
+      target: worker
+    restart: unless-stopped
+    deploy:
+      replicas: ${QUEUE_ENABLED:-1}
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:-${DATABASE_URL}}
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      QUEUE_ENABLED: ${QUEUE_ENABLED:-1}
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    stop_grace_period: 60s
+
+# Mạng chung của Dokploy — có sẵn trên máy chủ (external), app chỉ "tham gia" chứ không tạo. Nhờ nó
+# DATABASE_URL dùng được địa chỉ NỘI BỘ (`postgresql://...@<tên-service-db>:5432/...`) thay vì đi vòng
+# qua IP công khai + cổng External — không phải mở cổng database ra internet.
+networks:
+  dokploy-network:
+    external: true

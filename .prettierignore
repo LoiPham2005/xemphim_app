@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+dist
+coverage
+.turbo
+pnpm-lock.yaml
+next-env.d.ts
+prisma/migrations

@@ -1,0 +1,24 @@
+{
+  /*
+   * tsconfig riêng cho các script chạy bằng `tsx` ngoài Next.js (cron dọn dẹp,
+   * tác vụ vận hành).
+   *
+   * Lý do tồn tại: tầng service mở đầu bằng `import "server-only"` — một chốt
+   * chặn cố ý, để không ai lỡ import chúng vào Client Component. Nhưng chốt đó
+   * cũng chặn luôn tiến trình Node thuần, dù đây mới đúng là nơi hợp lệ để gọi
+   * service.
+   *
+   * Nên: chỉ ở phạm vi script, thay `server-only` bằng module rỗng — đúng cách
+   * `vitest.config.ts` và bước build realtime đang làm. Cố ý KHÔNG đưa alias
+   * này vào tsconfig.json gốc: làm vậy là gỡ chốt chặn cho toàn bộ ứng dụng,
+   * và lỗi "service bị kéo vào bundle client" sẽ quay lại trong im lặng.
+   */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "server-only": ["./test/stubs/server-only.ts"]
+    }
+  },
+  "include": ["scripts/**/*.ts", "src/**/*.ts"]
+}

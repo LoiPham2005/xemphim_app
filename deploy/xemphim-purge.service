@@ -1,0 +1,43 @@
+# Dọn token đã hết hạn. Chạy theo lịch của `xemphim-purge.timer`.
+#
+# Cài đặt (trên VPS, sau khi đã cài xemphim.service):
+#   sudo cp deploy/xemphim-purge.service deploy/xemphim-purge.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now xemphim-purge.timer
+#
+# Kiểm tra:
+#   systemctl list-timers xemphim-purge.timer
+#   journalctl -u xemphim-purge.service -n 50
+
+[Unit]
+Description=xemphim — dọn refresh token và verification token đã hết hạn
+# Không cần chờ ứng dụng: script này nói chuyện thẳng với database.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+WorkingDirectory=/var/www/xemphim
+
+EnvironmentFile=/etc/xemphim/env
+Environment=NODE_ENV=production
+
+# Dùng pnpm chứ không gọi thẳng node: script chạy qua tsx với tsconfig riêng
+# (xem tsconfig.scripts.json), nên để package.json giữ đúng một nguồn sự thật
+# về cách gọi.
+ExecStart=/usr/bin/env pnpm db:purge
+
+# Tác vụ nền, không ai đợi kết quả — nhường CPU và I/O cho request thật.
+Nice=10
+IOSchedulingClass=idle
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=xemphim-purge

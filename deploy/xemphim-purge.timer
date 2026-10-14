@@ -1,0 +1,23 @@
+# Lịch chạy cho xemphim-purge.service.
+#
+# Mỗi ngày một lần là đủ: token hết hạn nằm lại thêm vài giờ không gây hại gì
+# (mọi truy vấn đều lọc theo `expiresAt`/`revokedAt`), việc dọn chỉ để hai bảng
+# đó không phình vô hạn.
+
+[Unit]
+Description=Chạy dọn token hết hạn của xemphim mỗi ngày
+
+[Timer]
+# 3 giờ sáng — giờ thấp điểm.
+OnCalendar=*-*-* 03:00:00
+
+# Lệch ngẫu nhiên tối đa 15 phút. Nhiều dịch vụ cùng hẹn đúng 03:00 sẽ dồn tải
+# vào một khoảnh khắc; với nhiều dự án trên chung một VPS thì điều đó có thật.
+RandomizedDelaySec=900
+
+# VPS tắt/khởi động lại đúng lúc tới hẹn thì chạy bù ngay khi máy lên, thay vì
+# im lặng bỏ qua tới ngày hôm sau.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,38 @@
+node_modules
+.pnpm-store
+
+# build outputs
+.next
+realtime/dist
+worker/dist
+out
+dist
+build
+.turbo
+*.tsbuildinfo
+
+# test
+coverage
+
+# env — chỉ .env.example được commit
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# editor / OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+.DS_Store
+
+# playwright
+test-results
+playwright-report
+blob-report
+.playwright

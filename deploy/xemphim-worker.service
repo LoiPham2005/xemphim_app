@@ -1,0 +1,75 @@
+# Tiến trình chạy job nền (BullMQ).
+#
+# Cài đặt:
+#   sudo cp deploy/xemphim-worker.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now xemphim-worker
+#
+# Xem log:  journalctl -u xemphim-worker -f
+#
+# ⚠️ Worker BẮT BUỘC có REDIS_URL trong /etc/xemphim/env. Khác web và
+# realtime, nó không có việc gì để làm nếu thiếu hàng đợi — và sẽ dừng ngay với
+# thông báo rõ ràng thay vì ngồi im trông như đang hoạt động.
+#
+# ⚠️ DỰ ÁN KHÔNG DÙNG HÀNG ĐỢI (`QUEUE_ENABLED=0`): tắt Ở TẦNG UNIT, đừng chỉ
+# sửa biến môi trường.
+#
+#   sudo systemctl disable --now xemphim-worker
+#
+# Đặt QUEUE_ENABLED=0 trong file env thì tiến trình tự thoát với mã 0 kèm lời
+# giải thích — nhưng `Restart=always` bật lại nó ngay lập tức. Nó sẽ quay vòng
+# cho tới khi chạm StartLimitBurst rồi vào trạng thái `failed`: ồn ào, và không
+# phải thứ bạn muốn thấy chỉ vì đã tắt một tính năng có chủ đích.
+
+[Unit]
+Description=xemphim worker (job nền)
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+# Dừng hẳn nếu crash liên tục. Hai khoá này phải ở [Unit], KHÔNG phải
+# [Service] — systemd đã chuyển chúng sang đây từ bản 229.
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/var/www/xemphim
+
+EnvironmentFile=/etc/xemphim/env
+Environment=NODE_ENV=production
+
+ExecStart=/usr/bin/node worker/dist/worker.cjs
+
+Restart=always
+RestartSec=5
+
+# Cho worker chạy nốt job đang dở trước khi bị giết.
+#
+# Mặc định systemd đợi 90 giây rồi SIGKILL. Đặt rõ ở đây để con số này là một
+# quyết định, không phải một mặc định tình cờ: cắt ngang job đã trừ tiền nhưng
+# chưa ghi nhận là để lại dữ liệu sai. Job dài hơn thì nâng lên.
+TimeoutStopSec=60
+
+# Tác vụ nền, không ai đợi — nhường CPU và I/O cho request thật.
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+
+# Siết quyền giống hai unit kia.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/www/xemphim/worker/dist
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=xemphim-worker
+
+[Install]
+WantedBy=multi-user.target

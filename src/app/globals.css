@@ -1,0 +1,451 @@
+/*
+ * Tailwind CSS v4 (cấu hình bằng CSS, không cần tailwind.config.js).
+ * Các class thủ công bên dưới vẫn giữ nguyên và vẫn hoạt động — Tailwind ở đây
+ * là tuỳ chọn thêm cho code mới, không phải bắt buộc phải viết lại UI cũ.
+ */
+@import "tailwindcss";
+
+:root {
+  /* `--font-inter` do next/font/google bơm vào qua class trên <html> (xem layout.tsx).
+     Giữ nguyên chuỗi fallback cũ — nếu Google Fonts lỗi/chặn mạng, trình duyệt vẫn
+     rơi về font hệ thống thay vì vỡ layout. */
+  --font-sans:
+    var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+    Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  --bg-color: #07070b;
+  --surface-color: #121219;
+  --surface-hover: #1d1d28;
+  --border-color: #26263a;
+  --text-main: #f4f4f7;
+  --text-muted: #9a9ab0;
+  --primary-color: #ff3d5e;
+  --primary-hover: #e62a4a;
+  --accent-color: #ffb020;
+  --danger-color: #ef4444;
+  --danger-hover: #dc2626;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+}
+
+/*
+ * Cầu nối giữa hai hệ thiết kế đang cùng tồn tại trong dự án.
+ *
+ * ---
+ * VẤN ĐỀ ĐÃ XẢY RA
+ *
+ * Trang được viết bằng class thủ công (`.card`, `.badge`) đọc bảng màu tối ở
+ * `:root` bên trên. Còn `src/components/**` được viết bằng Tailwind theo lối
+ * shadcn: `bg-white dark:bg-gray-950`. Nhánh `dark:` chỉ bật khi thẻ `<html>`
+ * mang class `dark` — mà KHÔNG chỗ nào đặt class đó.
+ *
+ * Hậu quả nhìn thấy được: header và footer hiện màu TRẮNG đè lên nền tối của
+ * trang, còn nút "Đăng ký" thì chữ xanh trên nền xanh, đọc không ra.
+ *
+ * ---
+ * CÁCH SỬA
+ *
+ * Khai báo token ngữ nghĩa cho Tailwind, trỏ thẳng vào chính các biến ở trên.
+ * Từ giờ `bg-surface` và `.card` lấy màu từ CÙNG MỘT nguồn — muốn đổi giao
+ * diện chỉ sửa bảng màu ở `:root`, không phải đi lùng từng file.
+ *
+ * Dùng tên theo VAI TRÒ (`surface`, `muted`, `line`) chứ không theo màu
+ * (`gray-800`): tên màu sẽ nói dối ngay lần đầu đổi tông, còn tên vai trò thì
+ * không.
+ */
+@theme inline {
+  --color-canvas: var(--bg-color);
+  --color-surface: var(--surface-color);
+  --color-elevated: var(--surface-hover);
+  --color-line: var(--border-color);
+  --color-content: var(--text-main);
+  --color-muted: var(--text-muted);
+  --color-brand: var(--primary-color);
+  --color-brand-hover: var(--primary-hover);
+  --color-accent: var(--accent-color);
+  --color-danger: var(--danger-color);
+  --color-success: var(--success-color);
+  --color-warning: var(--warning-color);
+
+  --font-sans: var(--font-sans);
+
+  --radius-token-sm: var(--radius-sm);
+  --radius-token-md: var(--radius-md);
+  --radius-token-lg: var(--radius-lg);
+}
+
+/* ===========================================================================
+ * ⚠️ MỌI CSS THỦ CÔNG DƯỚI ĐÂY PHẢI NẰM TRONG @layer. ĐỌC TRƯỚC KHI SỬA.
+ *
+ * Tailwind v4 đặt toàn bộ utility vào `@layer utilities`. Theo luật cascade,
+ * CSS KHÔNG thuộc layer nào sẽ THẮNG mọi CSS nằm trong layer — bất kể độ đặc
+ * hiệu, bất kể thứ tự khai báo.
+ *
+ * Hậu quả đã xảy ra thật: quy tắc `* { margin: 0; padding: 0 }` viết trần ở
+ * đây đã vô hiệu hoá sạch `p-6`, `px-4`, `py-16`, `mx-auto`, `mt-*` của
+ * Tailwind. Trang mất hết khoảng cách và dính lề trái, trong khi `max-w-6xl`
+ * vẫn chạy (max-width không bị reset đụng tới) — nên trông như "lệch layout"
+ * chứ không giống lỗi CSS, rất khó đoán ra nguyên nhân.
+ *
+ * Bug này nằm im rất lâu vì các trang cũ dùng `style={{}}` nội tuyến, vốn
+ * thắng tất cả. Nó chỉ lộ ra khi có trang đầu tiên viết bằng class Tailwind.
+ *
+ * Quy ước từ giờ:
+ *   - reset và style cho thẻ HTML thuần  → @layer base
+ *   - class dùng lại được (.card, .badge…) → @layer components
+ * Cả hai đều đứng dưới `utilities`, nên class Tailwind luôn ghi đè được.
+ * ========================================================================= */
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /*
+ * CHỈ tô màu cho thẻ <a> không mang class nào.
+ *
+ * Quy tắc cũ (`a { color: ... }`) tô mọi liên kết, kể cả liên kết đã được dựng
+ * thành nút. Đó là lý do nút "Đăng ký" — vốn là `<Button asChild><Link/></Button>`
+ * — hiện chữ chàm trên nền chàm, gần như không đọc được: màu chữ của nút thua
+ * quy tắc này.
+ *
+ * `:not([class])` để liên kết văn bản thuần vẫn có màu như cũ, còn bất cứ thứ
+ * gì đã tự khai báo kiểu dáng thì tự quyết định màu chữ của nó.
+ */
+  a:not([class]) {
+    color: var(--primary-color);
+    text-decoration: none;
+    transition: color 0.2s ease;
+  }
+
+  a:not([class]):hover {
+    color: var(--accent-color);
+  }
+
+  a {
+    text-decoration: none;
+  }
+}
+
+/*
+ * Class dùng lại được của dự án.
+ *
+ * Nằm trong `components` để class tiện ích của Tailwind luôn ghi đè được —
+ * ví dụ `<div className="card p-8">` phải cho ra padding 8, không phải 24 của
+ * `.card`. Viết trần ngoài layer thì `.card` sẽ thắng và `p-8` bị bỏ qua.
+ */
+@layer components {
+  /* 1280px = `max-w-7xl` của Tailwind, trùng với header và footer. Lệch nhau thì
+   logo trên header không thẳng hàng với nội dung bên dưới — chi tiết nhỏ nhưng
+   là thứ khiến trang trông cẩu thả. */
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 40px 24px;
+  }
+
+  .card {
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--card-shadow);
+    margin-bottom: 24px;
+  }
+
+  /* Tiêu đề trang, dùng chung cho các màn quản trị. */
+  .page-title {
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-top: 4px;
+  }
+
+  .page-subtitle {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-top: 6px;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .badge-primary {
+    background: rgba(255, 61, 94, 0.15);
+    color: var(--primary-color);
+    border: 1px solid rgba(255, 61, 94, 0.3);
+  }
+
+  .badge-success {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success-color);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  .badge-warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--warning-color);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+
+  /* Vòng focus nhìn thấy được cho liên kết. Nút và ô nhập giờ do
+   `components/ui/button.tsx` và `input.tsx` tự lo phần này. */
+  a:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+
+  /* Số ô trong form thay đổi theo thời gian (email → +họ tên → +tên đăng nhập),
+   nên KHÔNG cố định số cột. `auto-fit` tự chia lại, và nút bấm nằm ở hàng
+   riêng bên dưới thay vì bị đẩy vào giữa các ô nhập. */
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+
+  @media (max-width: 640px) {
+    .form-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .form-actions > * {
+      width: 100%;
+    }
+  }
+
+  .user-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    list-style: none;
+  }
+
+  .user-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    transition: background 0.2s ease;
+  }
+
+  .user-item:hover {
+    background: var(--surface-hover);
+  }
+
+  .user-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .user-email {
+    font-weight: 600;
+    font-size: 1rem;
+  }
+
+  .user-meta {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* ---------------------------------------------------------------------------
+ * Bổ sung: header, alert, spinner, tiện ích a11y
+ * ------------------------------------------------------------------------- */
+
+  .site-header {
+    border-bottom: 1px solid var(--border-color);
+    background: rgba(7, 7, 11, 0.85);
+    backdrop-filter: blur(8px);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .site-header__inner {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .site-header__brand {
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.01em;
+  }
+
+  .site-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 0.9rem;
+  }
+
+  .site-header__user {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+
+  .badge-danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger-color);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+
+  .alert {
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+  }
+
+  .alert-danger {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: var(--danger-color);
+  }
+
+  .alert-success {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: var(--success-color);
+  }
+
+  .alert-warning {
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: var(--warning-color);
+  }
+
+  /* Bảng tick quyền trên trang /roles. */
+  .permission-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 10px;
+  }
+
+  .permission-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 0.88rem;
+    cursor: pointer;
+  }
+
+  .permission-item:has(input:disabled) {
+    cursor: default;
+    opacity: 0.7;
+  }
+
+  .permission-item input {
+    margin-top: 3px;
+  }
+
+  .spinner {
+    width: 32px;
+    height: 32px;
+    margin: 0 auto;
+    border-radius: 9999px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--primary-color);
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Người dùng bật "giảm chuyển động" trong hệ điều hành thì không quay nữa. */
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation: none;
+    }
+
+    * {
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* Viền focus rõ ràng cho người dùng bàn phím. */
+  :focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+}
+
+/* ===========================================================================
+ * Giao diện xem phim
+ * ======================================================================== */
+@layer components {
+  /* Hàng phim cuộn ngang: ẩn thanh cuộn nhưng vẫn cuộn được bằng chuột/cảm ứng. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Nền "rạp chiếu" cho trang chào và trang đăng nhập — thuần CSS, không cần ảnh. */
+  .cinema-backdrop {
+    background:
+      radial-gradient(ellipse 80% 60% at 20% 0%, rgba(255, 61, 94, 0.22), transparent 60%),
+      radial-gradient(ellipse 60% 50% at 90% 20%, rgba(255, 176, 32, 0.12), transparent 60%),
+      linear-gradient(180deg, #0c0c14 0%, var(--bg-color) 70%);
+  }
+}

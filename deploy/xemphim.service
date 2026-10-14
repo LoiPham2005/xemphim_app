@@ -1,0 +1,65 @@
+# systemd unit cho deploy trực tiếp lên VPS (không dùng Docker).
+#
+# Cài đặt:
+#   sudo cp deploy/xemphim.service /etc/systemd/system/
+#   sudo mkdir -p /etc/xemphim && sudo cp .env.example /etc/xemphim/env
+#   sudo chmod 600 /etc/xemphim/env      # chứa SESSION_SECRET
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now xemphim
+#
+# Xem log:  journalctl -u xemphim -f
+
+[Unit]
+Description=xemphim (Next.js standalone server)
+Documentation=https://nextjs.org/docs/app/api-reference/config/next-config-js/output
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+# Dừng hẳn nếu crash liên tục, thay vì quay vòng vô tận che mất lỗi thật.
+#
+# ⚠️ Hai khoá này phải nằm ở [Unit], KHÔNG phải [Service] — systemd đã chuyển
+# chúng sang đây từ bản 229. Đặt nhầm chỗ thì systemd chỉ ghi "Unknown key
+# name" vào log rồi bỏ qua: giới hạn khởi động lại mất tác dụng hoàn toàn mà
+# unit vẫn nạp bình thường, nên không có gì báo cho bạn biết.
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/var/www/xemphim
+
+# Biến môi trường KHÔNG đọc từ .env trong mã nguồn: server.js của bản
+# standalone tự `process.chdir()` vào .next/standalone, nên .env ở gốc dự án
+# không bao giờ được nạp. Để file env ngoài thư mục deploy còn có lợi nữa là
+# nó không bị xoá mỗi lần build lại.
+EnvironmentFile=/etc/xemphim/env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+# Chỉ lắng nghe loopback: nginx là cửa duy nhất ra Internet. Nếu bind
+# 0.0.0.0 thì cổng 3000 lộ thẳng ra ngoài, bỏ qua TLS và rate limit của nginx.
+Environment=HOSTNAME=127.0.0.1
+
+ExecStart=/usr/bin/node .next/standalone/server.js
+
+Restart=always
+RestartSec=5
+
+# Siết quyền: một lỗ RCE trong app không kéo theo quyền trên cả máy.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/www/xemphim/.next
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=xemphim
+
+[Install]
+WantedBy=multi-user.target

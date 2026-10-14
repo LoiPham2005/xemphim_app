@@ -1,0 +1,274 @@
+# `version:` đã bị Compose v2 bỏ và sẽ in cảnh báo nếu còn giữ.
+
+x-database-url: &database-url
+  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-xemphim}?schema=public
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: xemphim_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-xemphim}
+    # ⚠️ BẮT BUỘC gắn `127.0.0.1:` phía trước.
+    #
+    # Không có nó, Docker mở cổng ra 0.0.0.0 — tức là Postgres nghe trên IP
+    # công khai của VPS. Với mật khẩu mặc định `postgres` thì đó là database
+    # mở toang cho cả Internet.
+    #
+    # Và đây là phần nhiều người không biết: **ufw KHÔNG chặn được cổng do
+    # Docker công bố**. Docker tự ghi luật vào chuỗi DOCKER của iptables, nằm
+    # trước luật của ufw. Chạy `ufw deny 5432` xong vẫn kết nối vào được như
+    # thường — tưởng đã đóng mà thực ra vẫn mở.
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-xemphim}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Chạy một lần rồi thoát. `web` đợi service này kết thúc thành công, nên
+  # schema luôn được apply trước khi có request đầu tiên.
+  migrate:
+    build:
+      context: .
+      target: migrator
+    container_name: xemphim_migrate
+    restart: "no"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *database-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Container dùng-một-lần để chạy tác vụ vận hành: dọn token, seed dữ liệu nền,
+  # kiểm tra trạng thái migration.
+  #
+  #   docker compose run --rm tools pnpm db:purge
+  #   docker compose run --rm tools pnpm db:seed:prod
+  #
+  # KHÔNG chạy tự động — nằm sau profile `tools` nên `docker compose up` bỏ qua
+  # hoàn toàn. Gọi theo lịch bằng cron của MÁY CHỦ (xem docs/DEPLOY_VPS.md).
+  #
+  # Vì sao dùng stage `builder` chứ không phải `runner` hay `migrator`: các tác
+  # vụ này chạy bằng tsx và cần cả `src/` lẫn tầng service. Bản standalone của
+  # `runner` không có `src/`, còn `migrator` cố ý chỉ có Prisma CLI. `builder`
+  # là stage trung gian đã được dựng sẵn khi build `runner`, nên tái dùng nó
+  # gần như không tốn thêm gì.
+  #
+  # Vì sao không viết thẳng câu DELETE vào đây: điều kiện xoá nằm trong
+  # `tokenService.purgeExpired()` và `verificationService.purgeExpired()`. Chép
+  # lại thành SQL là tạo ra nguồn sự thật thứ hai, và hai bên sẽ lệch nhau.
+  tools:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: builder
+    restart: "no"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *database-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      target: runner
+    container_name: xemphim_web
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *database-url
+      NODE_ENV: production
+      PORT: 3000
+      # Khai báo tường minh, giống service `realtime`, thay vì chỉ trông vào
+      # `env_file` (vốn `required: false` nên vắng mặt cũng không ai báo).
+      #
+      # Hai lý do:
+      #   - Nền tảng như Coolify truyền biến qua môi trường chứ không chắc có
+      #     tạo file `.env` cạnh compose. Dòng này khiến `web` lấy được biến
+      #     theo cả hai đường.
+      #   - `:?` bắt compose DỪNG ngay khi thiếu, kèm tên biến. Không có nó thì
+      #     container vẫn dựng rồi mới chết lúc khởi động.
+      #
+      # ⚠️ Phải cùng giá trị với `realtime`: web cấp token, realtime verify.
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET là bắt buộc}
+      # Rate limit dùng chung giữa các instance. Cùng một Redis với realtime —
+      # khoá của rate limit mang tiền tố riêng nên hai bên không giẫm lên nhau.
+      REDIS_URL: redis://redis:6379
+      # Truyền tường minh thay vì chỉ trông vào `env_file` (`required: false`,
+      # nên vắng mặt cũng không ai báo). Nền tảng như Coolify truyền biến qua
+      # môi trường chứ không chắc có tạo file `.env` cạnh compose.
+      QUEUE_ENABLED: ${QUEUE_ENABLED:-1}
+      REALTIME_ENABLED: ${REALTIME_ENABLED:-1}
+    # Chỉ nghe loopback: reverse proxy (Caddy/Traefik/Coolify) là cửa duy nhất
+    # đi vào. Mở ra 0.0.0.0 thì client gọi thẳng cổng 3000, bỏ qua TLS — và
+    # nguy hiểm hơn: bỏ qua luôn bước proxy GHI ĐÈ X-Forwarded-For, nên ai cũng
+    # tự khai IP giả được và né sạch rate limit đăng nhập.
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      # Chỉ `started`, không phải `healthy`: rate limit fail-open khi Redis
+      # chưa sẵn sàng, nên web không có lý do gì phải đợi. Bắt đợi ở đây chỉ
+      # làm chậm khởi động mà không đổi lại điều gì.
+      redis:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 25s
+      retries: 3
+
+  # Redis: BẮT BUỘC khi chạy từ 2 instance realtime trở lên. Không có nó, client
+  # nối vào instance A sẽ không nhận được tin phát từ instance B — im lặng,
+  # không lỗi nào cả.
+  redis:
+    image: redis:7-alpine
+    container_name: xemphim_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Tắt hẳn service này bằng `REALTIME_ENABLED=0` trong .env — xem khối
+  # `deploy.replicas` bên dưới.
+  realtime:
+    build:
+      context: .
+      target: realtime
+    container_name: xemphim_realtime
+    restart: unless-stopped
+
+    # CÔNG TẮC BẬT/TẮT.
+    #
+    # `replicas: 0` là không dựng container — và nếu nó đang chạy thì
+    # `docker compose up -d` DỪNG VÀ GỠ nó đi, chứ không bỏ mặc đó.
+    #
+    # Vì sao không dùng `profiles:` — cách quen thuộc hơn: service có profile
+    # thì mặc định KHÔNG chạy, nên ai không biết mà quên đặt `COMPOSE_PROFILES`
+    # sẽ mất realtime lẫn worker trong im lặng. Ở đây mặc định là 1: không đụng
+    # gì thì mọi thứ vẫn chạy như trước, muốn tắt mới phải nói ra.
+    #
+    # ⚠️ Chỉ nhận SỐ. `REALTIME_ENABLED=false` làm compose dừng ngay với
+    # `strconv.Atoi: parsing "false"` — cố ý ồn ào, xem src/lib/feature-flag.ts.
+    deploy:
+      replicas: ${REALTIME_ENABLED:-1}
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      REALTIME_PORT: 3002
+      REDIS_URL: redis://redis:6379
+      REALTIME_CORS_ORIGIN: ${REALTIME_CORS_ORIGIN:-http://localhost:3000}
+      REALTIME_ENABLED: ${REALTIME_ENABLED:-1}
+      # Phải TRÙNG KHỚP với app chính: token do web/mobile cấp được verify ở đây.
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET là bắt buộc}
+    # Cùng lý do với `web`: proxy định tuyến /socket.io/* vào đây, không ai
+    # được phép gọi thẳng cổng 3002 từ ngoài.
+    ports:
+      - "127.0.0.1:${REALTIME_PORT:-3002}:3002"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  # Chạy job nền: gửi email, gọi API bên thứ ba, xuất báo cáo.
+  #
+  # Không công bố cổng nào — worker không phục vụ request, nó chỉ lấy job ra
+  # khỏi Redis. Muốn giám sát thì theo dõi độ dài hàng đợi, không phải ping cổng.
+  worker:
+    build:
+      context: .
+      target: worker
+    container_name: xemphim_worker
+    restart: unless-stopped
+
+    # CÔNG TẮC BẬT/TẮT — cùng cơ chế với `realtime` ở trên.
+    #
+    # Dùng ĐÚNG biến mà app đọc để quyết định có đẩy job vào Redis hay không.
+    # Đây là điểm quan trọng nhất: nếu compose có biến riêng, sẽ có ngày
+    # `QUEUE_ENABLED=1` mà worker bị tắt — job chất đống trong Redis, email
+    # không bao giờ gửi, và không có một dòng log nào báo.
+    deploy:
+      replicas: ${QUEUE_ENABLED:-1}
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *database-url
+      NODE_ENV: production
+      # BẮT BUỘC với worker — khác web và realtime, nó không có việc gì để làm
+      # nếu thiếu hàng đợi. `:?` khiến compose dừng ngay thay vì dựng một tiến
+      # trình ngồi im trông như đang hoạt động.
+      REDIS_URL: redis://redis:6379
+      QUEUE_ENABLED: ${QUEUE_ENABLED:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+    # Cho worker đủ thời gian chạy nốt job đang dở trước khi bị giết.
+    #
+    # Mặc định Docker chỉ đợi 10 giây sau SIGTERM rồi SIGKILL — cắt ngang một
+    # job đã trừ tiền nhưng chưa ghi nhận là để lại dữ liệu sai. Nâng lên theo
+    # job dài nhất của bạn.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    stop_grace_period: 60s
+
+volumes:
+  postgres_data:

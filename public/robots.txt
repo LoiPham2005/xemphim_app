@@ -1,0 +1,16 @@
+# Mặc định CHẶN mọi công cụ tìm kiếm — có chủ đích, vì bộ khung này dựng cho
+# ứng dụng nội bộ có đăng nhập, không phải website công khai.
+#
+# ⚠️ DỰNG SITE CÔNG KHAI THÌ PHẢI XOÁ FILE NÀY.
+#
+# File tĩnh trong public/ ĐÈ LÊN route `src/app/robots.ts`. Nghĩa là bạn có thể
+# viết robots.ts trả về `Allow: /` hoàn toàn đúng, deploy thành công, mà site
+# vẫn bị chặn — vì file này mới là thứ được phục vụ. Lỗi hỏng âm thầm: không
+# có thông báo nào, chỉ là sáu tháng sau vẫn không ai vào từ Google.
+#
+# Kiểm tra bằng `curl <domain>/robots.txt`, đừng đọc code rồi kết luận.
+#
+# Nhớ bỏ luôn `robots: { index: false, follow: false }` trong src/app/layout.tsx.
+
+User-agent: *
+Disallow: /
