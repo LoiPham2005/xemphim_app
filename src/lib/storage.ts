@@ -89,17 +89,26 @@ export type PresignedPut = { url: string; headers: Record<string, string> };
  * tin được: nó có thể chứa `../` (thoát khỏi thư mục), ký tự Unicode gây rối,
  * hoặc trùng tên file người khác đã tải lên. Chỉ giữ lại phần mở rộng — và
  * cũng lọc luôn phần đó.
+ *
+ * `prefix` (mặc định `STORAGE_KEY_PREFIX`) đứng trước mọi khoá — để nhiều app dùng chung MỘT bucket
+ * mà mỗi app nằm gọn trong "thư mục" riêng (S3 không có thư mục thật, chỉ có tiền tố của khoá).
  */
-export function buildStorageKey(originalName: string, folder?: string): string {
+export function buildStorageKey(
+  originalName: string,
+  folder?: string,
+  prefix: string | undefined = env.STORAGE_KEY_PREFIX,
+): string {
   const ext = extname(originalName).toLowerCase().slice(0, 10);
   const safeExt = /^\.[a-z0-9]+$/.test(ext) ? ext : "";
 
   const name = `${Date.now()}-${randomUUID()}${safeExt}`;
 
   // Thư mục cũng phải lọc: nơi gọi có thể vô tình truyền vào giá trị từ input.
-  const safeFolder = folder?.replace(/[^a-z0-9/_-]/gi, "").replace(/^\/+|\/+$/g, "");
+  const parts = [prefix, folder]
+    .map((part) => part?.replace(/[^a-z0-9/_-]/gi, "").replace(/^\/+|\/+$/g, ""))
+    .filter((part): part is string => Boolean(part));
 
-  return safeFolder ? `${safeFolder}/${name}` : name;
+  return [...parts, name].join("/");
 }
 
 /** Thư mục ghi file khi chạy bản đĩa cục bộ. Nằm trong `public/` để Next phục vụ tĩnh. */

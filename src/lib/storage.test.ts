@@ -26,6 +26,17 @@ function fakeImage(type: "jpeg" | "png" | "gif" | "webp", size = 64): Buffer {
 }
 
 describe("buildStorageKey", () => {
+  it("prefixes every key so several apps can share one bucket", () => {
+    expect(buildStorageKey("a.mp4", "movies", "xemphim")).toMatch(
+      /^xemphim\/movies\/\d+-[0-9a-f-]{36}\.mp4$/,
+    );
+    expect(buildStorageKey("a.png", undefined, "xemphim")).toMatch(/^xemphim\/\d+-/);
+  });
+
+  it("sanitizes the prefix like the folder", () => {
+    expect(buildStorageKey("a.png", "posters", "../evil app/")).toMatch(/^evilapp\/posters\//);
+  });
+
   it("KHÔNG giữ tên file gốc", () => {
     const key = buildStorageKey("Ảnh Của Tôi.png");
 

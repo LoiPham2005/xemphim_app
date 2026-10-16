@@ -295,6 +295,17 @@ const envSchema = z.object({
   S3_FORCE_PATH_STYLE: featureFlag(false),
   /** Tên miền CDN đặt trước bucket, nếu có. */
   S3_PUBLIC_URL: optionalString(z.string().url().optional()),
+  /**
+   * Tiền tố đứng trước MỌI khoá tệp, vd. `xemphim` -> `xemphim/movies/...`. Dùng khi nhiều app chung
+   * một bucket. Đổi giá trị này sau khi đã có tệp thì tệp cũ VẪN đọc được (khoá cũ lưu trong DB),
+   * chỉ tệp mới đi vào tiền tố mới.
+   */
+  STORAGE_KEY_PREFIX: optionalString(
+    z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9/_-]*$/i, "Chỉ chữ, số, gạch ngang, gạch dưới và /")
+      .optional(),
+  ),
 
   // --- OAuth ---------------------------------------------------------------
   // Mỗi provider độc lập: thiếu cặp CLIENT_ID/SECRET của provider nào thì
